@@ -10,8 +10,10 @@ import 'BikeLocation.dart';
 import 'package:google_maps_flutter/google_maps_flutter.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:flutter/services.dart';
+import 'package:compasstools/compasstools.dart';
 //import 'package:location/location.dart';
 import 'login_page.dart';
+
 
 void main() => runApp(MyApp());
 
@@ -54,6 +56,9 @@ class _MyHomePageState extends State<MyHomePage> {
   Position _currentPosition;
   BitmapDescriptor customIcon = null;
   BitmapDescriptor custom_user_location_icon = null;
+  int _haveSensor;
+  String sensorType;
+  int compassData =0;
 
   createMarker(context) { // function to create a custom marker
     if (customIcon == null) {
@@ -69,7 +74,7 @@ class _MyHomePageState extends State<MyHomePage> {
   create_user_location_marker(context) { // function to create a custom marker for the user's location
     if (custom_user_location_icon == null) {
       ImageConfiguration configuration = createLocalImageConfiguration(context);
-      BitmapDescriptor.fromAssetImage(configuration, 'assets/blue_dot_resize_3.png')
+      BitmapDescriptor.fromAssetImage(configuration, 'assets/marker_icon.png')
           .then((icon) {
         setState(() {
           custom_user_location_icon = icon;
@@ -77,12 +82,47 @@ class _MyHomePageState extends State<MyHomePage> {
       });
     }
   }
+  Future<void> checkDeviceSensors() async {
+    int haveSensor;
+    try {
+      haveSensor = await Compasstools.checkSensors;
+      switch (haveSensor) {
+        case 0:
+          {
+            sensorType = "No sensors for compass";
+          }
+          break;
+        case 1:
+          {
+            sensorType = "Accelerometer & Magnetometer";
+          }
+          break;
+        case 2:
+          {
+            sensorType = "Gyroscope";
+          }
+          break;
+        default:
+          {
+            sensorType = "Error";
+          }
+          break;
+      }
+    } on Exception {
+    }
+    if (!mounted) return;
+    setState(() {
+      _haveSensor = haveSensor;
+    });
+  }
+
   GoogleMapController _controller;
 
   @override
   void initState() {
     // TODO: implement initState
     super.initState();
+    checkDeviceSensors();
     new Timer.periodic(Duration(seconds: 1), (Timer t) => setState((){
       getLocation(); // this updates the user's location periodically (every second)
     }));
@@ -240,6 +280,13 @@ class _MyHomePageState extends State<MyHomePage> {
 
   @override
   Widget build(BuildContext context) {
+    Timer.run(() async{
+      compassData = await Compasstools.azimuthStream.first;
+      print("compassData: " + compassData.toString());
+      setState(() {
+
+      });
+    });
     getLocation();
     createMarker(context);
     create_user_location_marker(context);
@@ -273,23 +320,31 @@ class _MyHomePageState extends State<MyHomePage> {
     ));
   }
 
-  getLocation() async{
-    Position position = await geolocator
-        .getCurrentPosition(desiredAccuracy: LocationAccuracy.best);
-    try{
+  getLocation() {
+    Timer.run(() async{
+      compassData = await Compasstools.azimuthStream.first;
+      setState(() {
+
+      });
+    });
+
+    geolocator
+        .getCurrentPosition(desiredAccuracy: LocationAccuracy.best)
+        .then((Position position) {
       setState(() {
         _currentPosition = position;
         final marker = Marker(
-          markerId: MarkerId("curr_loc"),
-          position: LatLng(_currentPosition.latitude, _currentPosition.longitude),
-          infoWindow: InfoWindow(title: 'Your Location'),
-          icon: custom_user_location_icon
+            markerId: MarkerId("curr_loc"),
+            position: LatLng(_currentPosition.latitude, _currentPosition.longitude),
+            infoWindow: InfoWindow(title: 'Your Location'),
+            icon: custom_user_location_icon,
+            rotation: compassData.toDouble()
         );
         allMarkers.add(marker);
       });
-    }catch(e) {
+    }).catchError((e) {
       print(e);
-    }
+    });
 
   }
   
